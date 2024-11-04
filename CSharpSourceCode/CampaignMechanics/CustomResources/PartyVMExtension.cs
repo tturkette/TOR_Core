@@ -15,6 +15,8 @@ namespace TOR_Core.CampaignMechanics.CustomResources
     [ViewModelExtension(typeof(PartyVM), "RefreshCurrentCharacterInformation")]
     public class PartyVMExtension : BaseViewModelExtension
     {
+        public static PartyVM ViewModelInstance { get; private set; }
+  
         private bool _customResourceUpkeepVisible;
         private string _customResourceUpkeepText = string.Empty;
         private HintViewModel _hintViewModel;
@@ -23,6 +25,9 @@ namespace TOR_Core.CampaignMechanics.CustomResources
 
         public PartyVMExtension(ViewModel vm) : base(vm) 
         {
+            var partyVm  = vm as PartyVM;
+            ViewModelInstance = partyVm;
+            
             _hintViewModel = new HintViewModel(new TextObject("{=upkeep}Upkeep"));
             _pendingResourceCosts = new MBBindingList<PendingResourceCostVM>();
         }
@@ -54,6 +59,12 @@ namespace TOR_Core.CampaignMechanics.CustomResources
             {
                 CustomResourceUpkeepVisible = false;
             }
+        }
+        
+        public override void OnFinalize()
+        {
+            base.OnFinalize();
+            ViewModelInstance = null;
         }
 
         [DataSourceProperty]

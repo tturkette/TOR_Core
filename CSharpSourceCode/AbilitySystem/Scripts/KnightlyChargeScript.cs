@@ -1,5 +1,6 @@
-﻿using System.Linq;
+using System.Linq;
 using TaleWorlds.CampaignSystem;
+using TaleWorlds.Core;
 using TaleWorlds.Library;
 using TaleWorlds.LinQuick;
 using TaleWorlds.MountAndBlade;
@@ -29,14 +30,23 @@ namespace TOR_Core.AbilitySystem.Scripts
 
             foreach (var hero in heroes)
             {
-                var agentHero= Mission.Current.Agents.WhereQ(x => x.GetHero() == hero).First();
+                var agentHero= Mission.Current.Agents.WhereQ(x => x.GetHero() == hero).FirstOrDefault();
 
                 if (agentHero != null)
                 {
-                    var targets = Mission.Current.GetNearbyAgents(agentHero.Position.AsVec2, 5, new MBList<Agent>());
-                        
-                    list.AddRange(targets);
+                    var targets = Mission.Current.GetNearbyAgents(agentHero.Position.AsVec2, 5, new MBList<Agent>()).WhereQ(x => x.BelongsToMainParty()).ToMBList();
+
+                    if (!targets.IsEmpty())
+                    {
+                        list.AddRange(targets);
+                    }
+                    
                 }
+            }
+
+            if (list.IsEmpty())
+            {
+                return;
             }
                 
             SetExplicitTargetAgents(list);

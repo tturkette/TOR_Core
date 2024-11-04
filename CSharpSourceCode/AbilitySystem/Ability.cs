@@ -14,6 +14,7 @@ using TOR_Core.BattleMechanics.AI.CastingAI.Components;
 using TOR_Core.BattleMechanics.AI.CommonAIFunctions;
 using TOR_Core.CharacterDevelopment.CareerSystem;
 using TaleWorlds.Localization;
+using TOR_Core.CharacterDevelopment;
 
 namespace TOR_Core.AbilitySystem
 {
@@ -147,8 +148,10 @@ namespace TOR_Core.AbilitySystem
             else if (Template.CastType == CastType.WindUp)
             {
                 IsCasting = true;
-                var timer = new Timer(Template.CastTime * 1000);
-                timer.AutoReset = false;
+                var timer = new Timer(Template.CastTime * 1000)
+                {
+                    AutoReset = false
+                };
                 timer.Elapsed += (s, e) => { IsActivationPending = true; };
                 timer.Start();
             }
@@ -171,7 +174,7 @@ namespace TOR_Core.AbilitySystem
             IsActivationPending = false;
             IsCasting = false;
             bool prayerCoolSeperated = false;
-            ExplainedNumber Cooldown = new ExplainedNumber(Template.CoolDown);
+            ExplainedNumber cooldown = new(Template.CoolDown);
             if (Game.Current.GameType is Campaign)
             {
                 if (casterAgent.IsMainAgent)
@@ -182,22 +185,39 @@ namespace TOR_Core.AbilitySystem
                     var type = Template.AbilityType;
                     if (type == AbilityType.Spell)
                     {
-                        CareerHelper.ApplyBasicCareerPassives(player, ref Cooldown, PassiveEffectType.WindsCooldownReduction, true);
+                        CareerHelper.ApplyBasicCareerPassives(player, ref cooldown, PassiveEffectType.WindsCooldownReduction, true);
+
+                        if (casterAgent.IsMainAgent && casterAgent.GetHero().HasCareer(TORCareers.GreyLord))
+                        {
+                            var choice = TORCareerChoices.GetChoice("SecretOfFellfangPassive1");
+                            if ( choice!=null)
+                            {
+                                var component = Agent.Main.GetComponent<AbilityComponent>();
+                                var count = component.KnownAbilitySystem.Count;
+                                count--; // reduced because of career ability 
+                            
+                                if(count<choice.GetPassiveValue())
+                                {
+                                    cooldown.AddFactor(-0.5f);
+                                }
+                            }
+                        }
+                        
                     }
 
                     if (type == AbilityType.Prayer)
                     {
-                        CareerHelper.ApplyBasicCareerPassives(player, ref Cooldown, PassiveEffectType.PrayerCoolDownReduction, true);
+                        CareerHelper.ApplyBasicCareerPassives(player, ref cooldown, PassiveEffectType.PrayerCoolDownReduction, true);
                     }
 
                 }
             }
 
             if (Template.AbilityType == AbilityType.Prayer && !prayerCoolSeperated)
-                casterAgent.GetComponent<AbilityComponent>().SetPrayerCoolDown((int)Cooldown.ResultNumber);
+                casterAgent.GetComponent<AbilityComponent>().SetPrayerCoolDown((int)cooldown.ResultNumber);
             else
             {
-                SetCoolDown((int)Cooldown.ResultNumber);
+                SetCoolDown((int)cooldown.ResultNumber);
             }
 
             var frame = GetSpawnFrame(casterAgent);
@@ -208,7 +228,7 @@ namespace TOR_Core.AbilitySystem
             }
 
             GameEntity parentEntity = GameEntity.CreateEmpty(Mission.Current.Scene, false);
-            parentEntity.SetGlobalFrame(frame);
+            parentEntity.SetGlobalFrameMT(frame);
 
             AddLight(ref parentEntity);
 
@@ -253,7 +273,7 @@ namespace TOR_Core.AbilitySystem
         private MatrixFrame CalculateQuickCastMatrixFrame(Agent casterAgent)
         {
             var frame = casterAgent.LookFrame;
-            switch (this.AbilityEffectType)
+            switch (AbilityEffectType)
             {
                 case AbilityEffectType.Missile:
                 case AbilityEffectType.SeekerMissile:
@@ -263,15 +283,15 @@ namespace TOR_Core.AbilitySystem
                     }
                 // Quick cast setup
                 case AbilityEffectType.Augment:
-                    frame.origin = Agent.Main.GetWorldPosition().GetGroundVec3();
+                    frame.origin = Agent.Main.GetWorldPosition().GetGroundVec3MT();
                     break;
                 case AbilityEffectType.ArtilleryPlacement:
                 case AbilityEffectType.Summoning:
                     frame.origin =
-                        Mission.Current.GetRandomPositionAroundPoint(Agent.Main.GetWorldPosition().GetGroundVec3(), 3, 6, false);
+                        Mission.Current.GetRandomPositionAroundPoint(Agent.Main.GetWorldPosition().GetGroundVec3MT(), 3, 6, false);
                     break;
-                case AbilityEffectType.Heal when this.IsGroundAbility():
-                    frame.origin = Agent.Main.GetWorldPosition().GetGroundVec3();
+                case AbilityEffectType.Heal when IsGroundAbility():
+                    frame.origin = Agent.Main.GetWorldPosition().GetGroundVec3MT();
                     break;
                 case AbilityEffectType.Heal:
                     {
@@ -300,7 +320,7 @@ namespace TOR_Core.AbilitySystem
                         Mission.Current.Scene.GetHeightAtPoint(pos.AsVec2, BodyFlags.CommonCollisionExcludeFlagsForCombat, ref height);
                         pos.z = height;
 
-                        MBList<Agent> targets = new MBList<Agent>();
+                        MBList<Agent> targets = [];
                         targets = Mission.Current.GetNearbyAgents(pos.AsVec2, 5, targets);
 
                         foreach (var agent in targets)
@@ -438,8 +458,10 @@ namespace TOR_Core.AbilitySystem
                 case AbilityEffectType.Wind:
                 case AbilityEffectType.Vortex:
                     {
-                        frame = new MatrixFrame(Mat3.Identity, target.GetPositionPrioritizeCalculated());
-                        frame.rotation = casterAgent.Frame.rotation;
+                        frame = new MatrixFrame(Mat3.Identity, target.GetPositionPrioritizeCalculated())
+                        {
+                            rotation = casterAgent.Frame.rotation
+                        };
                         break;
                     }
                 case AbilityEffectType.CareerAbilityEffect:
@@ -513,10 +535,13 @@ namespace TOR_Core.AbilitySystem
 
         private void AddPhysics(ref GameEntity entity)
         {
-            var mass = 1;
-            entity.AddSphereAsBody(Vec3.Zero, Template.Radius, BodyFlags.Dynamic);
-            entity.AddPhysics(mass, entity.CenterOfMass, entity.GetBodyShape(), Vec3.Zero, Vec3.Zero, PhysicsMaterial.GetFromName("missile"), false, 1);
-            entity.SetPhysicsState(true, false);
+            using(new TWSharedMutexWriteLock(Scene.PhysicsAndRayCastLock))
+            {
+                var mass = 1;
+                entity.AddSphereAsBody(Vec3.Zero, Template.Radius, BodyFlags.Dynamic);
+                entity.AddPhysics(mass, entity.CenterOfMass, entity.GetBodyShape(), Vec3.Zero, Vec3.Zero, PhysicsMaterial.GetFromName("missile"), false, 1);
+                entity.SetPhysicsState(true, false);
+            }
         }
 
         protected void AddBehaviour(ref GameEntity entity, Agent casterAgent)
@@ -560,6 +585,9 @@ namespace TOR_Core.AbilitySystem
                 case AbilityEffectType.ArtilleryPlacement:
                     AddExactBehaviour<ArtilleryPlacementScript>(entity, casterAgent);
                     break;
+                case AbilityEffectType.TimeWarpEffect:
+                    AddExactBehaviour<TimeWarpScript>(entity, casterAgent);
+                    break;
             }
 
             if (IsSingleTarget)
@@ -568,11 +596,11 @@ namespace TOR_Core.AbilitySystem
                 {
                     var wizardAIComponent = casterAgent.GetComponent<WizardAIComponent>();
                     var target = wizardAIComponent.CurrentCastingBehavior.CurrentTarget;
-                    AbilityScript.SetExplicitTargetAgents(new MBList<Agent> { target.Agent });
+                    AbilityScript.SetExplicitTargetAgents([target.Agent]);
                 }
                 else if (Crosshair.CrosshairType == CrosshairType.SingleTarget)
                 {
-                    AbilityScript.SetExplicitTargetAgents(new MBList<Agent> { (Crosshair as SingleTargetCrosshair).CachedTarget });
+                    AbilityScript.SetExplicitTargetAgents([(Crosshair as SingleTargetCrosshair).CachedTarget]);
                 }
             }
 

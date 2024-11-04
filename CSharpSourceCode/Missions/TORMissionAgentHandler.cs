@@ -14,16 +14,10 @@ using TOR_Core.BattleMechanics.AI.CivilianMissionAI;
 
 namespace TOR_Core.Missions
 {
-    public class TORMissionAgentHandler : MissionLogic
+    public class TORMissionAgentHandler(string playerSpecialSpawnTag = null) : MissionLogic
 	{
-		private string _playerSpecialSpawnTag = null;
-        private Dictionary<string, List<UsableMachine>> _usablePoints;
-
-        public TORMissionAgentHandler(string playerSpecialSpawnTag = null)
-		{
-			_playerSpecialSpawnTag = playerSpecialSpawnTag;
-			_usablePoints = new Dictionary<string, List<UsableMachine>>();
-		}
+		private string _playerSpecialSpawnTag = playerSpecialSpawnTag;
+        private Dictionary<string, List<UsableMachine>> _usablePoints = [];
 
         public override void EarlyStart()
         {
@@ -40,7 +34,7 @@ namespace TOR_Core.Missions
 				{
 					if (!_usablePoints.ContainsKey(key))
 					{
-						_usablePoints.Add(key, new List<UsableMachine>());
+						_usablePoints.Add(key, []);
 					}
 					_usablePoints[key].Add(usableMachine);
 				}
@@ -183,7 +177,10 @@ namespace TOR_Core.Missions
 					matrixFrame.rotation.s = Vec3.CrossProduct(matrixFrame.rotation.f, matrixFrame.rotation.u);
 					matrixFrame.rotation.OrthonormalizeAccordingToForwardAndKeepUpAsZAxis();
 
-					matrixFrame.origin.z = Mission.Scene.GetGroundHeightAtPosition(matrixFrame.origin, BodyFlags.CommonCollisionExcludeFlags);
+                    using (new TWSharedMutexReadLock(Scene.PhysicsAndRayCastLock))
+					{
+                        matrixFrame.origin.z = Mission.Scene.GetGroundHeightAtPositionMT(matrixFrame.origin, BodyFlags.CommonCollisionExcludeFlags);
+                    }
 
 					var agentData = GetAgentBuildData(character, matrixFrame);
 
